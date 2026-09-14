@@ -26,8 +26,9 @@
 
 1. Phase 1: foundation and Quick Dub vertical slice — this plan.
 2. Phase 2: FFmpeg, Faster-Whisper CPU, diarization, source separation, and timing.
-3. Phase 3: Studio transcript editor, speaker timeline, voice manager, preview, and invalidation.
-4. Phase 4: authorized voice cloning, cloud lip-sync, experimental CPU fallbacks, export hardening, and Windows installer.
+3. Phase 3: Quick Video Tools, subtitle-preserving transforms, overlays, watermark, metadata removal, and batch presets.
+4. Phase 4: Studio transcript editor, speaker timeline, voice manager, preview, and invalidation.
+5. Phase 5: authorized voice cloning, cloud lip-sync, experimental CPU fallbacks, export hardening, and Windows installer.
 
 ---
 
