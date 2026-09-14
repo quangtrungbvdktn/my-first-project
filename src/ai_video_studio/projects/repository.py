@@ -2,14 +2,15 @@ import os
 import tempfile
 import threading
 from pathlib import Path
+from typing import ClassVar
 
 from ai_video_studio.domain.models import PipelineCheckpoint, StudioProject
 
 
 class ProjectRepository:
     filename = "project.json"
-    _locks_guard = threading.Lock()
-    _project_locks: dict[Path, threading.RLock] = {}
+    _locks_guard: ClassVar[threading.Lock] = threading.Lock()
+    _project_locks: ClassVar[dict[Path, threading.RLock]] = {}
 
     def create(self, project: StudioProject) -> None:
         project.root_dir.mkdir(parents=True, exist_ok=False)
