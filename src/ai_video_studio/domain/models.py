@@ -45,6 +45,13 @@ class StudioProject(BaseModel):
     speakers: list[Speaker] = Field(default_factory=list)
     checkpoints: list[PipelineCheckpoint] = Field(default_factory=list)
 
+    @model_validator(mode="after")
+    def checkpoint_stages_are_unique(self) -> "StudioProject":
+        stages = [checkpoint.stage for checkpoint in self.checkpoints]
+        if len(stages) != len(set(stages)):
+            raise ValueError("checkpoint stages must be unique")
+        return self
+
     @computed_field
     @property
     def export_dir(self) -> Path:
