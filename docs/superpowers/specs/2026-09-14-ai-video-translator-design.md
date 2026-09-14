@@ -150,7 +150,39 @@ Standard TTS must never be presented as voice cloning. Voice cloning is enabled 
 - Validate Vietnamese and Chinese Unicode through the full export pipeline.
 - Allow future language packs without changing pipeline orchestration.
 
-## 8. Storage and recovery
+## 8. Automatic Subtitle Studio
+
+The application generates editable subtitles from Faster-Whisper word timestamps and keeps source and translated text synchronized.
+
+### Authoring
+
+- Split captions using sentence meaning, pauses, reading speed, and line-length limits.
+- Edit source/translated text, start/end time, line breaks, and per-caption position.
+- Support source-only, translated-only, and bilingual layouts.
+- Find/replace in bulk and apply the project glossary.
+- Warn about overlaps, excessive reading speed, overflow, and missing glyphs.
+- Re-time captions after transcript edits or dubbed-audio duration changes.
+
+### Styling and export
+
+- Configure font, size, fill, outline, shadow, background, alignment, and safe-zone position.
+- Preview styling over the video and save reusable project presets.
+- Support word-level karaoke highlighting when word timestamps are available.
+- Export source, translated, and bilingual SRT; WebVTT; styled ASS; soft-subtitle video; and FFmpeg-burned MP4.
+
+### Replacing existing burned-in subtitles
+
+- Detect likely original subtitle regions with OCR and group detections by shot/time range.
+- Display an editable mask overlay; users can drag, resize, and keyframe masks.
+- Process each mask with Gaussian blur, pixelation, or optional cloud/local inpainting.
+- Default to CPU-friendly OCR plus FFmpeg Gaussian blur.
+- Place translated subtitles over the processed region or at a separately editable position.
+- Allow global positioning plus per-caption and per-shot overrides.
+- Persist masks, keyframes, positions, and styles so exports can be regenerated without repeating OCR.
+- Provide Before/After preview and safe-zone/overflow warnings.
+- Never alter the source video; all processing targets new preview/export files.
+
+## 9. Storage and recovery
 
 Each project uses a separate local directory containing:
 
@@ -166,7 +198,7 @@ Each project uses a separate local directory containing:
 
 The application autosaves edits, resumes after restart, regenerates only invalidated stages, and never overwrites original media.
 
-## 9. Security, privacy, and consent
+## 10. Security, privacy, and consent
 
 - Store secrets in Windows Credential Manager.
 - Do not write API keys into project files or logs.
@@ -176,7 +208,7 @@ The application autosaves edits, resumes after restart, regenerates only invalid
 - Allow users to clear local cache and provider-generated temporary assets.
 - Do not scrape, infer, or clone voices from unauthorized sources.
 
-## 10. Error handling
+## 11. Error handling
 
 - Preflight checks: FFmpeg, writable workspace, disk capacity, connectivity, credentials, quota, and provider capability.
 - Typed errors: configuration, input, local process, timeout, quota, provider, moderation, and export.
@@ -185,7 +217,7 @@ The application autosaves edits, resumes after restart, regenerates only invalid
 - Preserve completed stages after cancellation or application shutdown.
 - Show actionable Vietnamese error messages with technical details available on demand.
 
-## 11. Acceptance testing
+## 12. Acceptance testing
 
 The first release must validate:
 
@@ -202,8 +234,12 @@ The first release must validate:
 - Preservation of original media
 - OpenRouter free-model fallback behavior
 - Refusal to silently use paid models
+- OCR detection and manual correction of burned-in subtitle masks
+- Blur/pixelate replacement across scene changes
+- Manual global, per-caption, and per-shot subtitle positioning
+- SRT, VTT, ASS, soft-subtitle, and burned-in MP4 export
 
-## 12. Delivery boundaries
+## 13. Delivery boundaries
 
 Included in the first release:
 
@@ -216,7 +252,8 @@ Included in the first release:
 - Provider adapters for paid services
 - Authorized voice cloning
 - Cloud lip-sync and experimental CPU fallback
-- MP4, audio, and SRT exports
+- MP4, audio, SRT, VTT, and ASS exports
+- Automatic Subtitle Studio with styling, karaoke timing, original-subtitle masking, and manual positioning
 
 Not required for the first release:
 
@@ -227,7 +264,7 @@ Not required for the first release:
 - Videos longer than approximately 30 minutes
 - macOS/Linux installers
 
-## 13. Implementation strategy
+## 14. Implementation strategy
 
 The repository is currently an effectively empty starter. Implementation will:
 
