@@ -44,6 +44,7 @@ class StudioProject(BaseModel):
     segments: list[Segment] = Field(default_factory=list)
     speakers: list[Speaker] = Field(default_factory=list)
     checkpoints: list[PipelineCheckpoint] = Field(default_factory=list)
+    revision: int = Field(default=0, ge=0)
 
     @model_validator(mode="after")
     def checkpoint_stages_are_unique(self) -> "StudioProject":

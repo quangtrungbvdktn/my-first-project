@@ -1,10 +1,19 @@
 import os
 import tempfile
 import threading
+from collections.abc import Callable
 from pathlib import Path
 from typing import ClassVar
 
-from ai_video_studio.domain.models import PipelineCheckpoint, StudioProject
+from ai_video_studio.domain.models import StudioProject
+from ai_video_studio.pipeline.state import PipelineCheckpoint, StageName, StageStatus
+
+
+class StaleProjectError(RuntimeError):
+    """Raised when a full-project save would overwrite a newer revision."""
+
+
+ProjectMutation = Callable[[StudioProject], StudioProject | None]
 
 
 class ProjectRepository:
@@ -19,22 +28,40 @@ class ProjectRepository:
         self.save(project)
 
     def save(self, project: StudioProject) -> None:
-        root_dir = project.root_dir
+        with self._lock_for(project.root_dir):
+            self._save_locked(project, expected_revision=project.revision)
+
+    def update(self, root_dir: Path, mutation: ProjectMutation) -> StudioProject:
+        root_dir = Path(root_dir)
         with self._lock_for(root_dir):
-            target = root_dir / self.filename
-            self._merge_persisted_checkpoints(project, target)
-            temporary = self._temporary_path(root_dir)
-            try:
-                self._write_temp(temporary, project.model_dump_json(indent=2))
-                os.replace(temporary, target)
-            finally:
-                self._remove_temporary(temporary)
+            current = self._load_from_target(root_dir / self.filename)
+            updated = mutation(current) or current
+            if updated.root_dir != root_dir:
+                updated = updated.model_copy(update={"root_dir": root_dir})
+            self._save_locked(updated, expected_revision=current.revision)
+            return updated
+
+    def complete_checkpoint_segments(
+        self, root_dir: Path, stage: StageName, segment_ids: set[str]
+    ) -> StudioProject:
+        def complete(project: StudioProject) -> None:
+            self._checkpoint(project, stage).completed_segment_ids.update(segment_ids)
+
+        return self.update(root_dir, complete)
+
+    def invalidate_checkpoint(self, root_dir: Path, stage: StageName) -> StudioProject:
+        def invalidate(project: StudioProject) -> None:
+            checkpoint = self._checkpoint(project, stage)
+            checkpoint.status = StageStatus.PENDING
+            checkpoint.completed_segment_ids.clear()
+            checkpoint.error_code = None
+            checkpoint.error_message = None
+
+        return self.update(root_dir, invalidate)
 
     def load(self, root_dir: Path) -> StudioProject:
         root_dir = Path(root_dir)
-        payload = (root_dir / self.filename).read_text(encoding="utf-8")
-        project = StudioProject.model_validate_json(payload)
-        return project.model_copy(update={"root_dir": root_dir})
+        return self._load_from_target(root_dir / self.filename)
 
     @classmethod
     def _lock_for(cls, root_dir: Path) -> threading.RLock:
@@ -42,34 +69,43 @@ class ProjectRepository:
         with cls._locks_guard:
             return cls._project_locks.setdefault(key, threading.RLock())
 
-    def _merge_persisted_checkpoints(self, project: StudioProject, target: Path) -> None:
-        if not target.exists():
-            return
-
-        persisted = StudioProject.model_validate_json(target.read_text(encoding="utf-8"))
-        previous_by_stage = {checkpoint.stage: checkpoint for checkpoint in persisted.checkpoints}
-        requested_stages = {checkpoint.stage for checkpoint in project.checkpoints}
-        merged = [
-            self._merge_checkpoint(checkpoint, previous_by_stage.get(checkpoint.stage))
-            for checkpoint in project.checkpoints
-        ]
-        merged.extend(
-            checkpoint
-            for checkpoint in persisted.checkpoints
-            if checkpoint.stage not in requested_stages
-        )
-        project.checkpoints = merged
-
     @staticmethod
-    def _merge_checkpoint(
-        requested: PipelineCheckpoint, persisted: PipelineCheckpoint | None
-    ) -> PipelineCheckpoint:
-        if persisted is None:
-            return requested
+    def _checkpoint(project: StudioProject, stage: StageName) -> PipelineCheckpoint:
+        for checkpoint in project.checkpoints:
+            if checkpoint.stage == stage:
+                return checkpoint
+        raise ValueError(f"checkpoint not found for stage {stage}")
 
-        merged = requested.model_copy(deep=True)
-        merged.completed_segment_ids.update(persisted.completed_segment_ids)
-        return merged
+    def _save_locked(self, project: StudioProject, expected_revision: int) -> None:
+        target = project.root_dir / self.filename
+        if target.exists():
+            persisted = self._load_from_target(target)
+            if persisted.revision != expected_revision:
+                raise StaleProjectError(
+                    f"project revision {expected_revision} is stale; current revision is {persisted.revision}"
+                )
+        elif expected_revision != 0:
+            raise StaleProjectError("project file is missing for a non-initial revision")
+
+        if project.revision != expected_revision:
+            raise StaleProjectError("project revision changed during the save operation")
+
+        saved = project.model_copy(update={"revision": expected_revision + 1})
+        self._write_atomic(target, saved.model_dump_json(indent=2))
+        project.revision = saved.revision
+
+    def _load_from_target(self, target: Path) -> StudioProject:
+        payload = target.read_text(encoding="utf-8")
+        project = StudioProject.model_validate_json(payload)
+        return project.model_copy(update={"root_dir": target.parent})
+
+    def _write_atomic(self, target: Path, payload: str) -> None:
+        temporary = self._temporary_path(target.parent)
+        try:
+            self._write_temp(temporary, payload)
+            os.replace(temporary, target)
+        finally:
+            self._remove_temporary(temporary)
 
     def _temporary_path(self, root_dir: Path) -> Path:
         descriptor, path = tempfile.mkstemp(
