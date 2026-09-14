@@ -9,7 +9,7 @@ import ai_video_studio.projects.repository as repository_module
 from ai_video_studio.domain.languages import LanguageCode
 from ai_video_studio.domain.models import ProjectSettings, StudioProject
 from ai_video_studio.pipeline.state import PipelineCheckpoint, StageName, StageStatus
-from ai_video_studio.projects.repository import ProjectRepository
+from ai_video_studio.projects.repository import ProjectRepository, StaleProjectError
 
 
 def project_at(root: Path) -> StudioProject:
@@ -27,6 +27,10 @@ def project_at(root: Path) -> StudioProject:
             )
         ],
     )
+
+
+def checkpoint(project: StudioProject, stage: StageName) -> PipelineCheckpoint:
+    return next(item for item in project.checkpoints if item.stage == stage)
 
 
 def test_save_and_load_round_trip(tmp_path: Path):
@@ -50,6 +54,41 @@ def test_save_replaces_existing_project_json(tmp_path: Path):
     repo.save(project)
 
     assert repo.load(project.root_dir).name == "Updated"
+
+
+def test_save_allows_checkpoint_invalidation_to_clear_completed_segments(tmp_path: Path):
+    repo = ProjectRepository()
+    project = project_at(tmp_path / "demo")
+    repo.create(project)
+    invalidated = repo.load(project.root_dir)
+    stage = checkpoint(invalidated, StageName.TRANSLATED)
+    stage.status = StageStatus.PENDING
+    stage.completed_segment_ids.clear()
+    stage.error_code = None
+    stage.error_message = None
+
+    repo.save(invalidated)
+
+    saved = checkpoint(repo.load(project.root_dir), StageName.TRANSLATED)
+    assert saved.status == StageStatus.PENDING
+    assert saved.completed_segment_ids == set()
+
+
+def test_stale_full_project_save_is_rejected(tmp_path: Path):
+    repo = ProjectRepository()
+    project = project_at(tmp_path / "demo")
+    repo.create(project)
+    first = repo.load(project.root_dir)
+    stale = repo.load(project.root_dir)
+    first.name = "First update"
+
+    repo.save(first)
+
+    stale.name = "Stale update"
+    with pytest.raises(StaleProjectError):
+        repo.save(stale)
+
+    assert repo.load(project.root_dir).name == "First update"
 
 
 def test_temp_write_failure_preserves_existing_json(monkeypatch, tmp_path: Path):
@@ -109,9 +148,9 @@ def test_checkpoint_round_trip_preserves_completed_segments(tmp_path: Path):
 
     repo.create(project)
 
-    checkpoint = repo.load(project.root_dir).checkpoints[0]
-    assert checkpoint.status == StageStatus.SUCCEEDED
-    assert checkpoint.completed_segment_ids == {"s1"}
+    loaded = repo.load(project.root_dir)
+    assert checkpoint(loaded, StageName.TRANSLATED).status == StageStatus.SUCCEEDED
+    assert checkpoint(loaded, StageName.TRANSLATED).completed_segment_ids == {"s1"}
 
 
 def test_project_rejects_duplicate_checkpoint_stages(tmp_path: Path):
@@ -129,23 +168,58 @@ def test_project_rejects_duplicate_checkpoint_stages(tmp_path: Path):
         )
 
 
-def test_overlapping_saves_merge_completed_checkpoint_segments(tmp_path: Path):
-    creator = ProjectRepository()
+def test_explicit_segment_completion_unions_completed_ids(tmp_path: Path):
+    repo = ProjectRepository()
     project = project_at(tmp_path / "demo")
-    creator.create(project)
+    repo.create(project)
 
-    first = creator.load(project.root_dir)
-    second = creator.load(project.root_dir)
-    first.checkpoints[0].completed_segment_ids.add("s2")
-    second.checkpoints[0].completed_segment_ids.add("s3")
+    repo.complete_checkpoint_segments(project.root_dir, StageName.TRANSLATED, {"s2"})
+    repo.complete_checkpoint_segments(project.root_dir, StageName.TRANSLATED, {"s3"})
+
+    saved = checkpoint(repo.load(project.root_dir), StageName.TRANSLATED)
+    assert saved.completed_segment_ids == {"s1", "s2", "s3"}
+
+
+def test_invalidate_checkpoint_explicitly_clears_completion(tmp_path: Path):
+    repo = ProjectRepository()
+    project = project_at(tmp_path / "demo")
+    repo.create(project)
+
+    repo.invalidate_checkpoint(project.root_dir, StageName.TRANSLATED)
+
+    saved = checkpoint(repo.load(project.root_dir), StageName.TRANSLATED)
+    assert saved.status == StageStatus.PENDING
+    assert saved.completed_segment_ids == set()
+
+
+def test_transactional_updates_preserve_concurrent_status_and_error_changes(tmp_path: Path):
+    repo = ProjectRepository()
+    project = project_at(tmp_path / "demo")
+    project.checkpoints.append(PipelineCheckpoint(stage=StageName.SYNTHESIZED))
+    repo.create(project)
+
+    def fail_translation(current: StudioProject) -> None:
+        stage = checkpoint(current, StageName.TRANSLATED)
+        stage.status = StageStatus.FAILED
+        stage.error_code = "quota"
+        stage.error_message = "Quota exhausted"
+
+    def cancel_synthesis(current: StudioProject) -> None:
+        stage = checkpoint(current, StageName.SYNTHESIZED)
+        stage.status = StageStatus.CANCELLED
+        stage.error_code = "cancelled"
+        stage.error_message = "Cancelled by user"
 
     with ThreadPoolExecutor(max_workers=2) as executor:
         futures = [
-            executor.submit(ProjectRepository().save, candidate)
-            for candidate in (first, second)
+            executor.submit(repo.update, project.root_dir, mutation)
+            for mutation in (fail_translation, cancel_synthesis)
         ]
         for future in futures:
             future.result()
 
-    checkpoint = creator.load(project.root_dir).checkpoints[0]
-    assert checkpoint.completed_segment_ids == {"s1", "s2", "s3"}
+    saved = repo.load(project.root_dir)
+    translated = checkpoint(saved, StageName.TRANSLATED)
+    synthesized = checkpoint(saved, StageName.SYNTHESIZED)
+    assert (translated.status, translated.error_code) == (StageStatus.FAILED, "quota")
+    assert (synthesized.status, synthesized.error_code) == (StageStatus.CANCELLED, "cancelled")
