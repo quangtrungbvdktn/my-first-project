@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from pydantic import ValidationError
 import pytest
+from pydantic import ValidationError
 
 from ai_video_studio.domain.languages import LanguageCode
 from ai_video_studio.domain.models import ProjectSettings, Segment, StudioProject
