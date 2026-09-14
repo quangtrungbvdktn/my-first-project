@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ai-video-translator-studio"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+  "PySide6>=6.7,<7",
+  "pydantic>=2.8,<3",
+  "httpx>=0.27,<1",
+  "keyring>=25,<26",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8,<9",
+  "pytest-asyncio>=0.23,<1",
+  "respx>=0.21,<1",
+  "ruff>=0.6,<1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ai_video_studio"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
