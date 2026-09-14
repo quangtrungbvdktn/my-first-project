@@ -3,6 +3,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field, computed_field, model_validator
 
 from ai_video_studio.domain.languages import LanguageCode
+from ai_video_studio.pipeline.state import PipelineCheckpoint
 
 
 class Segment(BaseModel):
@@ -40,8 +41,9 @@ class StudioProject(BaseModel):
     root_dir: Path
     source_media: Path
     settings: ProjectSettings
-    segments: list[Segment] = []
-    speakers: list[Speaker] = []
+    segments: list[Segment] = Field(default_factory=list)
+    speakers: list[Speaker] = Field(default_factory=list)
+    checkpoints: list[PipelineCheckpoint] = Field(default_factory=list)
 
     @computed_field
     @property
