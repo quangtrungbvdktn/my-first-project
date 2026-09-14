@@ -182,7 +182,40 @@ The application generates editable subtitles from Faster-Whisper word timestamps
 - Provide Before/After preview and safe-zone/overflow warnings.
 - Never alter the source video; all processing targets new preview/export files.
 
-## 9. Storage and recovery
+## 9. Quick Video Tools
+
+Quick Video Tools provides non-destructive, preset-driven edits compiled into a single FFmpeg filter graph whenever practical.
+
+### Transform and timing
+
+- Flip horizontally or vertically, rotate, crop, resize, and convert among 9:16, 16:9, and 1:1.
+- Add a blurred background when the source does not fill the target aspect ratio.
+- Trim head/tail, change playback speed, mute, or replace audio.
+- Keep an ordered edit-operation list in project data; do not mutate source media.
+
+### Subtitle-preserving flips
+
+- For external or application-generated subtitles, transform the video layer first and render subtitles afterward so text orientation remains unchanged.
+- For burned-in source subtitles, use OCR text/position data, mask the old subtitle, transform the picture, and reconstruct the subtitle without mirroring.
+- Require review when OCR confidence is below the configured threshold.
+
+### Overlays and watermark
+
+- Add text, image, or video overlays with position, size, opacity, start/end time, and z-order.
+- Allow drag/resize in preview, safe-zone snapping, edge/center alignment, and simple position/opacity keyframes.
+- Let users place watermarks above or below subtitle layers.
+- Save reusable presets and apply them to a batch of videos.
+
+### Metadata and export
+
+- Remove nonessential metadata from exported files using FFmpeg metadata mapping.
+- Preserve only technical rotation/color information required for correct playback.
+- Use stream copy when no operation requires re-encoding.
+- Otherwise combine compatible edits into one render pass.
+- Render cached low-resolution previews and full-quality final outputs.
+- Always write a new output filename and validate it before atomic completion.
+
+## 10. Storage and recovery
 
 Each project uses a separate local directory containing:
 
@@ -198,7 +231,7 @@ Each project uses a separate local directory containing:
 
 The application autosaves edits, resumes after restart, regenerates only invalidated stages, and never overwrites original media.
 
-## 10. Security, privacy, and consent
+## 11. Security, privacy, and consent
 
 - Store secrets in Windows Credential Manager.
 - Do not write API keys into project files or logs.
@@ -208,7 +241,7 @@ The application autosaves edits, resumes after restart, regenerates only invalid
 - Allow users to clear local cache and provider-generated temporary assets.
 - Do not scrape, infer, or clone voices from unauthorized sources.
 
-## 11. Error handling
+## 12. Error handling
 
 - Preflight checks: FFmpeg, writable workspace, disk capacity, connectivity, credentials, quota, and provider capability.
 - Typed errors: configuration, input, local process, timeout, quota, provider, moderation, and export.
@@ -217,7 +250,7 @@ The application autosaves edits, resumes after restart, regenerates only invalid
 - Preserve completed stages after cancellation or application shutdown.
 - Show actionable Vietnamese error messages with technical details available on demand.
 
-## 12. Acceptance testing
+## 13. Acceptance testing
 
 The first release must validate:
 
@@ -238,8 +271,12 @@ The first release must validate:
 - Blur/pixelate replacement across scene changes
 - Manual global, per-caption, and per-shot subtitle positioning
 - SRT, VTT, ASS, soft-subtitle, and burned-in MP4 export
+- Subtitle-preserving horizontal and vertical flips
+- Metadata removal with required playback metadata retained
+- Overlay/watermark timing, z-order, positioning, opacity, and batch presets
+- Source preservation across every Quick Video Tools operation
 
-## 13. Delivery boundaries
+## 14. Delivery boundaries
 
 Included in the first release:
 
@@ -254,6 +291,7 @@ Included in the first release:
 - Cloud lip-sync and experimental CPU fallback
 - MP4, audio, SRT, VTT, and ASS exports
 - Automatic Subtitle Studio with styling, karaoke timing, original-subtitle masking, and manual positioning
+- Quick Video Tools for transforms, aspect ratios, trim/speed/audio, overlays, watermark, metadata removal, and batch presets
 
 Not required for the first release:
 
@@ -264,7 +302,7 @@ Not required for the first release:
 - Videos longer than approximately 30 minutes
 - macOS/Linux installers
 
-## 14. Implementation strategy
+## 15. Implementation strategy
 
 The repository is currently an effectively empty starter. Implementation will:
 
